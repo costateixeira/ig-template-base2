@@ -1,9 +1,14 @@
 {% comment %}
   DataTables-based equivalent of artifacts.xml.
   Drop {% include artifacts-table.xml %} into a page (e.g. artifacts-table.md) — one such page per language folder.
-  Picks the right translation per row at Jekyll time, falling back to the IG's source-language string when missing.
+  Labels come from site.data.stringsBase[include.lang]; include.lang is inherited from the page template
+  ({% include template-page-md.html lang='xx' %}). Row text picks the right translation per row at Jekyll time,
+  falling back to the IG's source-language string when missing.
+  The view (column filters, grouping, sort, page length and current page) is persisted in localStorage per page,
+  so a visitor returning to the page sees the same filtered view and page they left.
 {% endcomment %}
-{% assign lang = page.path | split: "/" | first %}
+{% assign lang = include.lang %}
+{% if lang == nil or lang == '' %}{% assign lang = page.path | split: "/" | first %}{% endif %}
 {% assign groupingStrings = site.data.stringsArtifacts[lang] %}
 {% if groupingStrings == nil %}{% assign groupingStrings = site.data.stringsArtifacts.en %}{% endif %}
 
@@ -24,6 +29,7 @@
   /* Body markdown spacing */
   #artifactsTable tbody td p { margin:0 0 .25em 0; }
   #artifactsTable tbody td p:last-child { margin-bottom:0; }
+  #artifactsTable tbody td.artifacts-id { font-family:monospace; font-size:.9em; white-space:nowrap; }
 
   /* Per-column filter row */
   #artifactsTable thead tr.filters th { padding:.25em .5em; background:rgba(0,0,0,0.03); }
@@ -164,7 +170,6 @@
 
   /* Top/bottom controls — neutral */
   .dt-container .dt-layout-row { padding:.4em 0; align-items:center; }
-  .dt-container .dt-search input,
   .dt-container .dt-length select {
     padding:.3em .5em;
     border:1px solid rgba(0,0,0,0.2);
@@ -172,7 +177,6 @@
     background:#fff;
     font-size:.9em;
   }
-  .dt-container .dt-search label,
   .dt-container .dt-length label { font-weight:normal; opacity:.75; }
   .dt-container .dt-info { opacity:.75; font-size:.9em; }
   .dt-container .dt-paging .dt-paging-button {
@@ -199,31 +203,35 @@
   }
 </style>
 
-{%- assign nameLabel = site.data.stringsBase[lang]['Name'] | default: 'Name' -%}
-{%- assign typeLabel = site.data.stringsBase[lang]['Type'] | default: 'Type' -%}
-{%- assign descLabel = site.data.stringsBase[lang]['Description'] | default: 'Description' -%}
-{%- assign searchVerb = site.data.stringsBase[lang]['Search'] | default: 'Search' -%}
-{%- assign useGroupingLabel = site.data.stringsBase[lang]['UseGrouping'] | default: 'Use grouping' -%}
-{%- assign categoryLabel = site.data.stringsBase[lang]['Category'] | default: 'Category' -%}
-{%- assign clearAllLabel = site.data.stringsBase[lang]['ClearAll'] | default: 'Clear all' -%}
+{%- assign groupingLabel    = site.data.stringsBase[include.lang]['Grouping']    | default: 'Grouping' -%}
+{%- assign titleLabel       = site.data.stringsBase[include.lang]['Title']       | default: 'Title' -%}
+{%- assign idLabel          = site.data.stringsBase[include.lang]['Id']          | default: 'Id' -%}
+{%- assign typeLabel        = site.data.stringsBase[include.lang]['Type']        | default: 'Type' -%}
+{%- assign descLabel        = site.data.stringsBase[include.lang]['Description'] | default: 'Description' -%}
+{%- assign searchVerb       = site.data.stringsBase[include.lang]['Search']      | default: 'Search' -%}
+{%- assign useGroupingLabel = site.data.stringsBase[include.lang]['UseGrouping'] | default: 'Use grouping' -%}
+{%- assign categoryLabel    = site.data.stringsBase[include.lang]['Category']    | default: 'Category' -%}
+{%- assign clearAllLabel    = site.data.stringsBase[include.lang]['ClearAll']    | default: 'Clear all' -%}
 
-<p class="artifacts-table-intro">{{ site.data.stringsBase[lang]['ArtifactsTableIntro'] | default: 'This page provides a tabular view of the FHIR artifacts defined as part of this implementation guide.' }}</p>
+<p class="artifacts-table-intro">{{ site.data.stringsBase[include.lang]['ArtifactsTableIntro'] | default: 'This page provides a tabular view of the FHIR artifacts defined as part of this implementation guide.' }}</p>
 
 <table id="artifactsTable" class="display" style="width:100%" data-fhir="generated">
   <thead>
     <tr>
       <th></th>
-      <th>{{ site.data.stringsBase[lang]['Grouping'] | default: 'Grouping' }}</th>
-      <th>{{ nameLabel }}</th>
+      <th>{{ groupingLabel }}</th>
+      <th>{{ titleLabel }}</th>
+      <th>{{ idLabel }}</th>
       <th>{{ typeLabel }}</th>
       <th>{{ descLabel }}</th>
     </tr>
     <tr class="filters">
       <th></th>
       <th></th>
-      <th><input type="text" placeholder="{{ searchVerb }} {{ nameLabel | downcase }}"/></th>
+      <th><input type="text" data-col="n" placeholder="{{ searchVerb }} {{ titleLabel | downcase }}"/></th>
+      <th><input type="text" data-col="i" placeholder="{{ searchVerb }} {{ idLabel | downcase }}"/></th>
       <th id="filterCellType"></th>
-      <th><input type="text" placeholder="{{ searchVerb }} {{ descLabel | downcase }}"/></th>
+      <th><input type="text" data-col="d" placeholder="{{ searchVerb }} {{ descLabel | downcase }}"/></th>
     </tr>
   </thead>
 </table>
@@ -235,12 +243,15 @@
 document.addEventListener('DOMContentLoaded', function(){
   var data = [
 {%- for r in site.data.artifactsTable -%}
-{%- assign nm = r.name[lang] | default: r.name.src -%}
+{%- assign titleSrc = r.title | default: r.name -%}
+{%- assign ttl = titleSrc[lang] | default: titleSrc.src -%}
+{%- assign rid = r.id | default: '' -%}
+{%- if rid == '' -%}{%- assign rid = r.ref | split: "/" | last -%}{%- endif -%}
 {%- assign descRaw = r.description[lang] | default: r.description.src | default: '' -%}
 {%- assign desc = descRaw | markdownify | strip -%}
 {%- assign gKey = r.groupingName | append: 'Name' -%}
 {%- assign groupLabel = groupingStrings[gKey] | default: r.groupingName -%}
-    { "p":{{ r.groupingPos }}, "gid":{{ r.groupingId | jsonify }}, "g":{{ groupLabel | jsonify }}, "n":{{ nm | jsonify }}, "t":{{ r.type | jsonify }}, "u":{{ r.url | jsonify }}, "r":{{ r.ref | jsonify }}, "d":{{ desc | jsonify }} }{%- unless forloop.last -%},{%- endunless %}
+    { "p":{{ r.groupingPos }}, "gid":{{ r.groupingId | jsonify }}, "g":{{ groupLabel | jsonify }}, "n":{{ ttl | jsonify }}, "i":{{ rid | jsonify }}, "t":{{ r.type | jsonify }}, "u":{{ r.url | jsonify }}, "r":{{ r.ref | jsonify }}, "d":{{ desc | jsonify }} }{%- unless forloop.last -%},{%- endunless %}
 {%- endfor %}
   ];
 
@@ -272,7 +283,36 @@ document.addEventListener('DOMContentLoaded', function(){
   var typeLabel        = {{ typeLabel | jsonify }};
   var categoryLabel    = {{ categoryLabel | jsonify }};
   var clearAllLabel    = {{ clearAllLabel | jsonify }};
-  var grouping = true;
+
+  // Column model. Data keys: p=grouping position, g=grouping label, n=title, i=id, t=type, d=description.
+  var columnDefs = [
+    { data: 'p', visible: false, searchable: false },
+    { data: 'g', visible: false },
+    { data: 'n', render: function(d, t, row){
+        if (t === 'display') {
+          return '<a href="' + encodeURI(row.u) + '" title="' + escapeHtml(row.r) + '">' + escapeHtml(d) + '</a>';
+        }
+        return d;
+      }
+    },
+    { data: 'i', className: 'artifacts-id', render: function(d, t){
+        return t === 'display' ? escapeHtml(d) : d;
+      }
+    },
+    { data: 't' },
+    { data: 'd', render: function(d, t){
+        if (t === 'display') return d;
+        return htmlToText(d);
+      }
+    }
+  ];
+  var TEXT_FILTER_KEYS = ['n', 'i', 'd'];
+  var TYPE_COL = 4, CATEGORY_COL = 1, TITLE_COL = 2;
+  var VISIBLE_COLS = columnDefs.filter(function(c){ return c.visible !== false; }).length;
+  function colIndex(key){
+    for (var i = 0; i < columnDefs.length; i++) if (columnDefs[i].data === key) return i;
+    return -1;
+  }
 
   var uniqueTypes = (function(){
     var s = new Set(), out = [];
@@ -287,10 +327,69 @@ document.addEventListener('DOMContentLoaded', function(){
     return out;
   })();
 
+  // ----- View state -----
+  var grouping = true;
   var selectedTypes = [];
   var selectedCategories = [];
-  // Per-column text filters (plain substring, case-insensitive)
+  // Per-column text filters keyed by data key (plain substring, case-insensitive)
   var colTextFilters = {};
+  var pageLength = 200;
+
+  // ----- Persisted view state (localStorage, per page) -----
+  // Stores filters, grouping, sort order, page length and the current page so that a visitor
+  // returning to this page gets the same view back.
+  var storageKey = 'artifactsTable:' + window.location.pathname;
+  function loadState(){
+    try {
+      var s = window.localStorage.getItem(storageKey);
+      var st = s ? JSON.parse(s) : null;
+      return (st && typeof st === 'object') ? st : {};
+    } catch(e) { return {}; }
+  }
+  function saveState(){
+    if (!table) return;
+    var info = table.page.info();
+    pageLength = info.length;
+    var st = {
+      grouping:   grouping,
+      types:      selectedTypes,
+      categories: selectedCategories,
+      text:       colTextFilters,
+      start:      info.start,
+      length:     info.length,
+      order:      table.order()
+    };
+    try { window.localStorage.setItem(storageKey, JSON.stringify(st)); } catch(e) {}
+  }
+  function validOrder(o){
+    if (!Array.isArray(o) || !o.length) return null;
+    for (var i = 0; i < o.length; i++) {
+      var e = o[i];
+      if (!Array.isArray(e) || e.length < 2) return null;
+      if (typeof e[0] !== 'number' || e[0] < 0 || e[0] >= columnDefs.length) return null;
+      if (e[1] !== 'asc' && e[1] !== 'desc') return null;
+    }
+    return o.map(function(e){ return [e[0], e[1]]; });
+  }
+
+  var saved = loadState();
+  if (typeof saved.grouping === 'boolean') grouping = saved.grouping;
+  if (Array.isArray(saved.types)) {
+    selectedTypes = saved.types.filter(function(v){ return uniqueTypes.indexOf(v) !== -1; });
+  }
+  if (Array.isArray(saved.categories)) {
+    selectedCategories = saved.categories.filter(function(v){ return uniqueCategories.indexOf(v) !== -1; });
+  }
+  if (saved.text && typeof saved.text === 'object') {
+    TEXT_FILTER_KEYS.forEach(function(k){
+      if (typeof saved.text[k] === 'string' && saved.text[k]) colTextFilters[k] = saved.text[k];
+    });
+  }
+  if (typeof saved.length === 'number' && saved.length > 0) pageLength = saved.length;
+  var initialView = {
+    start: (typeof saved.start === 'number' && saved.start > 0) ? saved.start : 0,
+    order: validOrder(saved.order)
+  };
 
   // Custom row filter — registered once globally
   if (!jQuery.fn.dataTable.ext.__artifactsTextFilterRegistered) {
@@ -298,12 +397,10 @@ document.addEventListener('DOMContentLoaded', function(){
     jQuery.fn.dataTable.ext.search.push(function(settings, dataArr, dataIndex){
       if (settings.nTable.id !== 'artifactsTable') return true;
       var row = settings.aoData[dataIndex]._aData;
-      var cols = settings.aoColumns;
-      for (var idx in colTextFilters) {
-        var needle = colTextFilters[idx];
+      for (var key in colTextFilters) {
+        var needle = colTextFilters[key];
         if (!needle) continue;
-        var dataKey = cols[idx].data;
-        var cell = String(row[dataKey] == null ? '' : row[dataKey]).replace(/<[^>]*>/g, '');
+        var cell = String(row[key] == null ? '' : row[key]).replace(/<[^>]*>/g, '');
         if (cell.toLowerCase().indexOf(needle.toLowerCase()) === -1) return false;
       }
       return true;
@@ -370,8 +467,10 @@ document.addEventListener('DOMContentLoaded', function(){
     jQuery('#artifactsTable thead tr:first-child th').eq(visIdx).toggleClass('has-filter', active);
   }
 
+  // Apply the Type / Category multi-select to the table. doRedraw === false only updates the
+  // search state and popup chrome (used while (re)building the table).
   function applyFilter(id, doRedraw){
-    var colIdx = (id === 'type') ? 3 : 1;
+    var colIdx = (id === 'type') ? TYPE_COL : CATEGORY_COL;
     var values = (id === 'type') ? selectedTypes : selectedCategories;
     if (values.length === 0) {
       table.column(colIdx).search('');
@@ -391,35 +490,19 @@ document.addEventListener('DOMContentLoaded', function(){
     if (doRedraw !== false) table.column(colIdx).draw();
   }
 
-  function buildConfig(grouping){
+  function buildConfig(grouping, view){
     var cfg = {
       orderCellsTop: true,
       layout: {
-        topStart: ['search', 'filterByCategory'],
+        topStart: ['filterByCategory'],
         topEnd: ['paging', 'pageLength'],
         bottomStart: 'info',
         bottomEnd: 'paging'
       },
       data: data,
-      columns: [
-        { data: 'p', visible: false, searchable: false },
-        { data: 'g', visible: false },
-        { data: 'n', render: function(d, t, row){
-            if (t === 'display') {
-              return '<a href="' + encodeURI(row.u) + '" title="' + escapeHtml(row.r) + '">' + escapeHtml(d) + '</a>';
-            }
-            return d;
-          }
-        },
-        { data: 't' },
-        { data: 'd', render: function(d, t){
-            if (t === 'display') return d;
-            return htmlToText(d);
-          }
-        }
-      ],
-      order: grouping ? [[0, 'asc']] : [[2, 'asc']],
-      pageLength: 200,
+      columns: columnDefs,
+      order: view.order || (grouping ? [[0, 'asc']] : [[TITLE_COL, 'asc']]),
+      pageLength: pageLength,
       lengthMenu: [[10, 25, 50, 100, 200, 500, 1000], [10, 25, 50, 100, 200, 500, 1000]]
     };
     if (grouping) {
@@ -430,7 +513,7 @@ document.addEventListener('DOMContentLoaded', function(){
           var first = rows.data().toArray()[0];
           var desc = first && groupDescriptions[first.gid];
           var $header = jQuery('<tr/>').append(
-            jQuery('<td/>').attr('colspan', 3).addClass('artifacts-group-header')
+            jQuery('<td/>').attr('colspan', VISIBLE_COLS).addClass('artifacts-group-header')
           );
           var $cell = $header.find('td');
           jQuery('<div/>').addClass('artifacts-group-name').text(group).appendTo($cell);
@@ -445,30 +528,48 @@ document.addEventListener('DOMContentLoaded', function(){
   }
 
   var table;
-  function renderTable(grouping){
+  // view: { start, order } — the page offset and sort order to restore (both optional)
+  function renderTable(grouping, view){
+    view = view || {};
     if (table) table.destroy();
-    table = jQuery('#artifactsTable').DataTable(buildConfig(grouping));
+    table = jQuery('#artifactsTable').DataTable(buildConfig(grouping, view));
 
     // Drop the Type multi-select into its column's filter cell
     var typeCell = document.getElementById('filterCellType');
     typeCell.innerHTML = '';
     typeCell.appendChild(makeFilterPopup('type', typeLabel, uniqueTypes, selectedTypes));
 
-    // Wire text inputs for Name + Description — use the custom row filter
-    jQuery('#artifactsTable thead tr.filters input[type=text]').off('.artifactsFilter').on('input.artifactsFilter change.artifactsFilter', function(){
-      var th = jQuery(this).closest('th')[0];
-      var idx = table.column(th).index();  // data column index (handles hidden cols)
-      colTextFilters[idx] = this.value;
+    // Wire text inputs for Title / Id / Description — use the custom row filter.
+    // Also push the current (possibly restored) filter values into the inputs and header marks.
+    jQuery('#artifactsTable thead tr.filters input[type=text]').each(function(){
+      var key = this.getAttribute('data-col');
+      this.value = colTextFilters[key] || '';
+      setHeaderFilterMark(colIndex(key), !!this.value);
+    }).off('.artifactsFilter').on('input.artifactsFilter change.artifactsFilter', function(){
+      var key = this.getAttribute('data-col');
+      colTextFilters[key] = this.value;
       table.draw();
-      setHeaderFilterMark(idx, !!this.value);
+      setHeaderFilterMark(colIndex(key), !!this.value);
     }).on('click.artifactsFilter', function(e){ e.stopPropagation(); });
 
-    // Re-apply filter state (table was destroyed; popup DOM was rebuilt)
+    // Re-apply multi-select state (table was destroyed; popup DOM was rebuilt), then draw once
     applyFilter('type',     false);
-    applyFilter('category', true);
+    applyFilter('category', false);
+    table.draw(false);
+
+    // Restore the page the visitor was on, if it still exists after filtering
+    if (view.start) {
+      var len = table.page.len();
+      var pages = table.page.info().pages;
+      var pg = len > 0 ? Math.floor(view.start / len) : 0;
+      if (pg > 0 && pg < pages) table.page(pg).draw(false);
+    }
   }
 
-  renderTable(grouping);
+  // Persist the view after every draw (page change, sort, length change, filter)
+  jQuery(document).on('draw.dt', '#artifactsTable', saveState);
+
+  renderTable(grouping, initialView);
 
   // ----- Document-delegated handlers (survive table rebuilds) -----
 
@@ -476,7 +577,8 @@ document.addEventListener('DOMContentLoaded', function(){
   jQuery(document).on('change', '#artifactsGroupToggle', function(e){
     e.stopPropagation();
     grouping = this.checked;
-    renderTable(grouping);
+    // Sort semantics differ between grouped and flat views, so fall back to the default order and first page
+    renderTable(grouping, {});
   });
 
   // Open/close popup

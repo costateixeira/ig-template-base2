@@ -2,8 +2,10 @@
 <!--
   - Produces _data/artifactsTable.json: a flat array of artifact rows with all
   - per-row translations baked in. Consumed by includes/artifacts-table.xml.
-  - Each row: { groupingPos, groupingId, groupingName, type, url, ref,
-  -            name: { src, <lang>... }, description: { src, <lang>... } }
+  - Each row: { groupingPos, groupingId, groupingName, type, id, url, ref,
+  -            title: { src, <lang>... }, description: { src, <lang>... } }
+  - "title" comes from ImplementationGuide.definition.resource.name, which the
+  - IG publisher populates from the resource's title (falling back to its name).
   -->
 <xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform" xmlns:f="http://hl7.org/fhir" exclude-result-prefixes="f">
   <xsl:output method="text" encoding="UTF-8"/>
@@ -39,11 +41,13 @@
       </xsl:for-each>
       <xsl:text>},"type":"</xsl:text>
       <xsl:value-of select="substring-before(f:reference/f:reference/@value, '/')"/>
+      <xsl:text>","id":"</xsl:text>
+      <xsl:call-template name="js-escape"><xsl:with-param name="s" select="substring-after(f:reference/f:reference/@value, '/')"/></xsl:call-template>
       <xsl:text>","url":"</xsl:text>
       <xsl:call-template name="js-escape"><xsl:with-param name="s" select="f:extension[@url='http://hl7.org/fhir/StructureDefinition/implementationguide-page']/f:valueUri/@value"/></xsl:call-template>
       <xsl:text>","ref":"</xsl:text>
       <xsl:call-template name="js-escape"><xsl:with-param name="s" select="f:reference/f:reference/@value"/></xsl:call-template>
-      <xsl:text>","name":{"src":"</xsl:text>
+      <xsl:text>","title":{"src":"</xsl:text>
       <xsl:call-template name="js-escape"><xsl:with-param name="s" select="f:name/@value"/></xsl:call-template>
       <xsl:text>"</xsl:text>
       <xsl:for-each select="f:name/f:extension[@url='http://hl7.org/fhir/StructureDefinition/translation']">
